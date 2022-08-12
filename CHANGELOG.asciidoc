@@ -29,7 +29,102 @@ Notes:
 === Node.js Agent version 3.x
 
 
-==== Unreleased
+[[release-notes-3.33.0]]
+==== 3.33.0 2022/05/05
+
+[float]
+===== Features
+
+- Pulled the `traceparent` NPM module into a local module and replaced the
+  `random-poly-fill` module with the built in `require('crypto').randomFillSync`
+  function call ({pull}2669[#2669])
+
+- Add a `parent` option to `agent.captureError(err[, options][, cb])` to allow
+  passing in a Transaction or Span to use as the parent for the error. Before
+  this change the *current* span or transaction, if any, was always used.
++
+This option is not documented in the user docs, nor added to the TypeScript
+types, because it is only expected to be useful for coming OTel Bridge work.
+
+[float]
+===== Bug fixes
+
+- Fix a possible crash in the instrumentation of an incoming HTTP/2 request: if
+  the underlying Http2Session was destroyed before the APM transaction was
+  ended (on Http2Stream end). This resulted in the instrumentation using the
+  [`stream.session.socket`](https://nodejs.org/api/http2.html#http2sessionsocket)
+  proxy, which can throw `ERR_HTTP2_SOCKET_UNBOUND` after the session is
+  destroyed. ({issues}2670[#2670])
+
+[float]
+===== Chores
+
+- The release process is slightly changed. CI (Jenkins) now handles `npm
+  publish ...` when a tag is pushed. ({pull}2667[#2667])
+
+- Pulled the `traceparent` NPM module into a local module and replaced the
+  `random-poly-fill` module with the built in `require('crypto').randomFillSync`
+  function call ({pull}2669[#2669])
+
+
+[[release-notes-3.32.0]]
+==== 3.32.0 2022/04/27
+
+[float]
+===== Features
+
+* Add support for node v18. ({pull}2652[#2652])
+
+* Add support for https://github.com/elastic/apm/blob/main/specs/agents/handling-huge-traces/tracing-spans-compress.md[span compression].
+  ({issues}2100[#2100], {issues}2604[#2604])
++
+By default, consecutive (sibling) exit spans of the same name, type, subtype,
+and destination with a duration of less than 50ms will be compressed into
+a single composite span. A possible case is the
+https://duckduckgo.com/?q=N%252B1+query+problem[N+1 query problem].
+Traces with many consecutive matching spans will be represented -- both in data
+and the APM UI -- more efficiently.
++
+Span compression can be disabled or matching behavior configured with the
+<<span-compression-enabled,`spanCompression* configuration options`>>.
+
+* Marks spans as "exit spans" across all instrumentations, preventing additional
+  child spans from being added to the exit spans.  See issue for a full list of
+  spans types that will be treated as exit spans. ({issues}2601[#2601])
+
+* Allow a new span to be created/started even if its transaction has ended.
+  This is expected to be a very rare use case. ({pull}2653[#2653])
+
+* The Trace Context headers are now propagated for http2 requests. ({pull}2656[#2656])
+
+
+[[release-notes-3.31.0]]
+==== 3.31.0 2022/03/23
+
+[float]
+===== Features
+
+* Add `captureBody` support for Hapi. ({issues}1905[#1905])
+
+* If a SNS or SQS single event trigger to an instrumented Lambda function
+  includes message attributes with the name "traceparent" (and "tracestate"),
+  case-insensitive, then those are used to continue the trace. This was already
+  being done for API Gateway event headers.
+
+[float]
+===== Bug fixes
+
+* Fix a bug with Lambda instrumentation where the APM agent would result in
+  an otherwise working Lambda function to respond with `null` if the Lambda
+  was missing the https://github.com/elastic/apm-aws-lambda[Elastic APM Lambda Extension].
+  ({issues}2598[#2598])
+
+* Fix a bug in Lambda instrumentation in the capturing of SNS and SQS event
+  message attributes. ({issues}2605[#2605])
+
+
+[[release-notes-3.30.0]]
+==== 3.30.0 2022/03/10
 
 [float]
 ===== Breaking changes
@@ -51,6 +146,17 @@ considered breaking in general. The impact is that the "Stack Trace" tab in
 the "Span details" view in the Kibana APM app will be empty. This was already
 the case for some spans based on span duration. ({pull}2565[#2565])
 
+* Implement the explicit signaling of Lambda invocation completion to the
+  Elastic AWS Lambda Extension. This improves data flushing in a Lambda
+  environment to ensure tracing data is only sent when the Lambda is active.
+  This avoids possible tracing data loss while a Lambda VM is frozen.
+  ({issues}2485[#2485])
++
+However, because this change triggers a bug in the extension, this version of
+the APM Node.js Agent must only be used with versions of the
+<<lambda,AWS Lambda Extension>>
+after v0.0.3.
+
 [float]
 ===== Features
 
@@ -62,9 +168,6 @@ the case for some spans based on span duration. ({pull}2565[#2565])
   `cloudProvider: none` and `centralConfig: false` to reduce required
   environment variables for setting up APM instrumentation of Lambdas.
   ({issues}2531[#2531])
-
-[float]
-===== Bug fixes
 
 
 [[release-notes-3.29.0]]
