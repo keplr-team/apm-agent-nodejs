@@ -1,3 +1,9 @@
+/*
+ * Copyright Elasticsearch B.V. and other contributors where applicable.
+ * Licensed under the BSD 2-Clause License; you may not use this file except in
+ * compliance with the BSD 2-Clause License.
+ */
+
 'use strict'
 
 // Test S3 instrumentation of the 'aws-sdk' module.
@@ -14,6 +20,7 @@ const { execFile } = require('child_process')
 const tape = require('tape')
 
 const { MockAPMServer } = require('../../../_mock_apm_server')
+const { validateSpan } = require('../../../_validate_schema')
 
 const LOCALSTACK_HOST = process.env.LOCALSTACK_HOST || 'localhost'
 const endpoint = 'http://' + LOCALSTACK_HOST + ':4566'
@@ -64,6 +71,10 @@ tape.test('simple S3 usage scenario', function (t) {
         // Compare some common fields across all spans.
         const spans = events.filter(e => e.span)
           .map(e => e.span)
+        spans.forEach(s => {
+          const errs = validateSpan(s)
+          t.equal(errs, null, 'span is valid  (per apm-server intake schema)')
+        })
         t.equal(spans.filter(s => s.trace_id === tx.trace_id).length,
           spans.length, 'all spans have the same trace_id')
         t.equal(spans.filter(s => s.transaction_id === tx.id).length,
@@ -97,7 +108,6 @@ tape.test('simple S3 usage scenario', function (t) {
             destination: {
               address: LOCALSTACK_HOST,
               port: 4566,
-              service: { name: 's3', type: 'storage' },
               cloud: { region: 'us-east-2' }
             }
           },

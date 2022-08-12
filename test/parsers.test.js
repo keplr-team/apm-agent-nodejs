@@ -1,3 +1,9 @@
+/*
+ * Copyright Elasticsearch B.V. and other contributors where applicable.
+ * Licensed under the BSD 2-Clause License; you may not use this file except in
+ * compliance with the BSD 2-Clause License.
+ */
+
 'use strict'
 
 var http = require('http')
@@ -233,6 +239,7 @@ function onRequest (cb) {
 
   server.listen(function () {
     var opts = {
+      agent: new http.Agent(),
       port: server.address().port
     }
     var req = http.request(opts, function (res) {

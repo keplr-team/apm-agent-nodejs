@@ -1,3 +1,9 @@
+/*
+ * Copyright Elasticsearch B.V. and other contributors where applicable.
+ * Licensed under the BSD 2-Clause License; you may not use this file except in
+ * compliance with the BSD 2-Clause License.
+ */
+
 'use strict'
 
 process.env.ELASTIC_APM_TEST = true
@@ -11,6 +17,7 @@ const agent = require('../../../..').start({
   spanCompressionEnabled: false
 })
 
+const config = require('../../../../lib/config')
 const { safeGetPackageVersion } = require('../../../_utils')
 
 // Support running these tests with a different package name -- typically
@@ -22,10 +29,15 @@ const esClientPkgName = process.env.ELASTIC_APM_TEST_ESCLIENT_PACKAGE_NAME || '@
 // of node.
 const esVersion = safeGetPackageVersion(esClientPkgName)
 const semver = require('semver')
-if (semver.lt(process.version, '10.0.0') && semver.gte(esVersion, '7.12.0')) {
-  console.log(`# SKIP ${esClientPkgName}@${esVersion} does not support node ${process.version}`)
-  process.exit()
-} else if (semver.lt(process.version, '12.0.0') && semver.satisfies(esVersion, '>=8', { includePrerelease: true })) {
+if (
+  (semver.lt(process.version, '10.0.0') && semver.gte(esVersion, '7.12.0')) ||
+  (semver.lt(process.version, '12.0.0') && semver.satisfies(esVersion, '>=8', { includePrerelease: true })) ||
+  // Surprise: Cannot use ">=8.2.0" here because the ES client uses prerelease
+  // tags, e.g. "8.2.0-patch.1", to mean "a patch release after 8.2.0" because
+  // it has rules about its version numbers. However semver orders that
+  // "-patch.1" *before* "8.2.0".
+  (semver.lt(process.version, '14.0.0') && semver.satisfies(esVersion, '>=8.2', { includePrerelease: true }))
+) {
   console.log(`# SKIP ${esClientPkgName}@${esVersion} does not support node ${process.version}`)
   process.exit()
 }
@@ -44,16 +56,17 @@ const mockClient = require('../../../_mock_http_client')
 const shimmer = require('../../../../lib/instrumentation/shimmer')
 const { MockES } = require('./_mock_es')
 
+let haveDiagCh = false
+try {
+  require('diagnostics_channel')
+  haveDiagCh = true
+} catch (_noModErr) {
+  // pass
+}
+
 const host = (process.env.ES_HOST || 'localhost') + ':9200'
 const clientOpts = {
   node: 'http://' + host
-}
-// Limitation: For v8 of the ES client, these tests assume the non-default
-// `HttpConnection` is used rather than the default usage of undici, because
-// the tests check for an HTTP span for each ES request and currently the
-// undici HTTP client is not instrumented.
-if (semver.satisfies(esVersion, '>=8', { includePrerelease: true })) {
-  clientOpts.Connection = es.HttpConnection
 }
 
 test('client.ping with promise', function (t) {
@@ -343,7 +356,7 @@ ${body.map(JSON.stringify).join('\n')}
 
   // 'ResponseError' is the client's way of passing back an Elasticsearch API
   // error. Some interesting parts of that error response body should be
-  // included in `err.context.custom`.
+  // included in `err.context.custom` and `err.exception.type`.
   test('ResponseError', function (t) {
     resetAgent(
       function done (data) {
@@ -351,8 +364,11 @@ ${body.map(JSON.stringify).join('\n')}
         t.ok(err, 'sent an error to APM server')
         t.ok(err.id, 'err.id')
         t.ok(err.exception.message, 'err.exception.message')
-        t.equal(err.exception.type, 'ResponseError',
-          'err.exception.type is ResponseError')
+        if (semver.satisfies(esVersion, '>=8', { includePrerelease: true })) {
+          t.equal(err.exception.type, 'ResponseError (number_format_exception)', 'err.exception.type')
+        } else {
+          t.equal(err.exception.type, 'ResponseError (illegal_argument_exception)', 'err.exception.type')
+        }
         if (semver.satisfies(esVersion, '>=8', { includePrerelease: true })) {
           t.equal(err.exception.module, '@elastic/transport')
           t.deepEqual(err.context.custom, {
@@ -690,68 +706,83 @@ ${body.map(JSON.stringify).join('\n')}
 
   // Ensure that even without HTTP child spans, trace-context propagation to
   // Elasticsearch still works.
-  test('context-propagation works', function (t) {
-    const mockResponses = [
-      {
-        statusCode: 200,
-        headers: {
-          'X-elastic-product': 'Elasticsearch',
-          'content-type': 'application/json'
-        },
-        body: '{"took":0,"timed_out":false,"_shards":{"total":0,"successful":0,"skipped":0,"failed":0},"hits":{"total":{"value":0,"relation":"eq"},"max_score":0,"hits":[]}}'
-      }
-    ]
-    if (semver.gte(esVersion, '7.14.0') && semver.satisfies(esVersion, '7.x')) {
-      // First request will be "GET /" for a product check.
-      mockResponses.unshift({
-        statusCode: 200,
-        headers: {
-          'X-elastic-product': 'Elasticsearch',
-          'content-type': 'application/json'
-        },
-        body: '{"name":"645a066f9b52","cluster_name":"docker-cluster","cluster_uuid":"1pR-cy9dSLWO7TNxI3kodA","version":{"number":"8.0.0-beta1","build_flavor":"default","build_type":"docker","build_hash":"ba1f616138a589f12eb0c6f678aee96377525b8f","build_date":"2021-11-04T12:35:26.989068569Z","build_snapshot":false,"lucene_version":"9.0.0","minimum_wire_compatibility_version":"7.16.0","minimum_index_compatibility_version":"7.0.0"},"tagline":"You Know, for Search"}'
-      })
+  const clientOptsToTry = {} // <name> -> <clientOpts object>
+  if (!es.HttpConnection) {
+    // This is pre-v8 of the ES client. Just test the default client options.
+    clientOptsToTry.default = clientOpts
+  } else {
+    if (haveDiagCh) {
+      clientOptsToTry.UndiciConnection = clientOpts
     }
-    const esServer = new MockES({ responses: mockResponses })
-    esServer.start(function (esUrl) {
-      resetAgent(
-        function done (data) {
+    // Also test the ES client configured to use HttpConnection rather than its
+    // default UndiciConnection. This is relevant for Kibana that, currently,
+    // uses HttpConnection.
+    clientOptsToTry.HttpConnection = Object.assign({}, clientOpts, { Connection: es.HttpConnection })
+  }
+  Object.keys(clientOptsToTry).forEach(clientOptsName => {
+    test(`context-propagation works (${clientOptsName} client options)`, function (t) {
+      const mockResponses = [
+        {
+          statusCode: 200,
+          headers: {
+            'X-elastic-product': 'Elasticsearch',
+            'content-type': 'application/json'
+          },
+          body: '{"took":0,"timed_out":false,"_shards":{"total":0,"successful":0,"skipped":0,"failed":0},"hits":{"total":{"value":0,"relation":"eq"},"max_score":0,"hits":[]}}'
+        }
+      ]
+      if (semver.gte(esVersion, '7.14.0') && semver.satisfies(esVersion, '7.x')) {
+      // First request will be "GET /" for a product check.
+        mockResponses.unshift({
+          statusCode: 200,
+          headers: {
+            'X-elastic-product': 'Elasticsearch',
+            'content-type': 'application/json'
+          },
+          body: '{"name":"645a066f9b52","cluster_name":"docker-cluster","cluster_uuid":"1pR-cy9dSLWO7TNxI3kodA","version":{"number":"8.0.0-beta1","build_flavor":"default","build_type":"docker","build_hash":"ba1f616138a589f12eb0c6f678aee96377525b8f","build_date":"2021-11-04T12:35:26.989068569Z","build_snapshot":false,"lucene_version":"9.0.0","minimum_wire_compatibility_version":"7.16.0","minimum_index_compatibility_version":"7.0.0"},"tagline":"You Know, for Search"}'
+        })
+      }
+      const esServer = new MockES({ responses: mockResponses })
+      esServer.start(function (esUrl) {
+        resetAgent(
+          function done (data) {
           // Assert that the ES server request for the `client.search()` is as
           // expected.
-          const searchSpan = data.spans[data.spans.length - 1]
-          const esServerReq = esServer.requests[esServer.requests.length - 1]
-          const tracestate = esServerReq.headers.tracestate
-          t.equal(tracestate, 'es=s:1', 'esServer request included the expected tracestate header')
-          t.ok(esServerReq.headers.traceparent, 'esServer request included a traceparent header')
-          const traceparent = TraceParent.fromString(esServerReq.headers.traceparent)
-          t.equal(traceparent.traceId, myTrans.traceId, 'traceparent.traceId')
-          // node-traceparent erroneously (IMHO) calls this field `id` instead
-          // of `parentId`.
-          t.equal(traceparent.id, searchSpan.id, 'traceparent.id')
-          t.end()
-        }
-      )
+            const searchSpan = data.spans[data.spans.length - 1]
+            const esServerReq = esServer.requests[esServer.requests.length - 1]
+            const tracestate = esServerReq.headers.tracestate
+            t.equal(tracestate, 'es=s:1', 'esServer request included the expected tracestate header')
+            t.ok(esServerReq.headers.traceparent, 'esServer request included a traceparent header')
+            const traceparent = TraceParent.fromString(esServerReq.headers.traceparent)
+            t.equal(traceparent.traceId, myTrans.traceId, 'traceparent.traceId')
+            // node-traceparent erroneously (IMHO) calls this field `id` instead
+            // of `parentId`.
+            t.equal(traceparent.id, searchSpan.id, 'traceparent.id')
+            t.end()
+          }
+        )
 
-      const myTrans = agent.startTransaction('myTrans')
-      const client = new es.Client(Object.assign(
-        {},
-        clientOpts,
-        { node: esUrl }
-      ))
-      client.search({ q: 'pants' })
-        .then(() => {
-          t.ok('client.search succeeded')
-        })
-        .catch((err) => {
-          t.error(err, 'no error from client.search')
-        })
-        .finally(() => {
-          myTrans.end()
-          agent.flush()
-          client.close()
-          esServer.close()
-        })
-      t.ok(agent.currentSpan === null, 'no currentSpan in sync code after @elastic/elasticsearch client command')
+        const myTrans = agent.startTransaction('myTrans')
+        const client = new es.Client(Object.assign(
+          {},
+          clientOptsToTry[clientOptsName],
+          { node: esUrl }
+        ))
+        client.search({ q: 'pants' })
+          .then(() => {
+            t.ok('client.search succeeded')
+          })
+          .catch((err) => {
+            t.error(err, 'no error from client.search')
+          })
+          .finally(() => {
+            myTrans.end()
+            agent.flush()
+            client.close()
+            esServer.close()
+          })
+        t.ok(agent.currentSpan === null, 'no currentSpan in sync code after @elastic/elasticsearch client command')
+      })
     })
   })
 }
@@ -831,12 +862,12 @@ function checkDataAndEnd (t, method, path, dbStatement, statusCode) {
 
     // Iff the test case provided an expected `statusCode`, then we expect
     // `.context.http`. The exception is with @elastic/elasticsearch >=8
-    // and `asyncHooks=false` (see "Limitations" section in the instrumentation
-    // code).
+    // and `contextManager="patch"` (see "Limitations" section in the
+    // instrumentation code).
     if (statusCode !== undefined) {
       if (semver.satisfies(esVersion, '>=8', { includePrerelease: true }) &&
-          agent._conf.asyncHooks === false) {
-        t.comment('skip span.context.http check because of asyncHooks=false + esVersion>=8 limitation')
+          agent._conf.contextManager === config.CONTEXT_MANAGER_PATCH) {
+        t.comment('skip span.context.http check because of contextManager="patch" + esVersion>=8 limitation')
       } else {
         t.equal(esSpan.context.http.status_code, statusCode, 'context.http.status_code')
         t.ok(esSpan.context.http.response.encoded_body_size, 'context.http.response.encoded_body_size is present')

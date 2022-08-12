@@ -1,3 +1,9 @@
+/*
+ * Copyright Elasticsearch B.V. and other contributors where applicable.
+ * Licensed under the BSD 2-Clause License; you may not use this file except in
+ * compliance with the BSD 2-Clause License.
+ */
+
 'use strict'
 
 // Some testing of run-context tracking through 'fs' methods.
@@ -8,8 +14,7 @@ const apm = require('../..').start({
   metricsInterval: '0s',
   centralConfig: false,
   cloudProvider: 'none',
-  disableSend: true,
-  asyncHooks: false
+  disableSend: true
 })
 
 const fs = require('fs')

@@ -19,6 +19,9 @@ Notes:
         [float]
         ===== Bug fixes
 
+        [float]
+        ===== Chores
+
 2. When making a release, change the "==== Unreleased" section header to:
 
         [[release-notes-x.x.x]]
@@ -28,16 +31,202 @@ Notes:
 [[release-notes-3.x]]
 === Node.js Agent version 3.x
 
+[[release-notes-3.38.0]]
+==== 3.38.0 2022/08/11
+
+[float]
+===== Features
+
+- Add instrumentation for the https://undici.nodejs.org[undici] HTTP client
+  library. This also adds instrumentation of Node.js v18's
+  https://nodejs.org/api/all.html#all_globals_fetch[`fetch()`], which uses
+  undici under the hood. For the instrumentation to work one must be using
+  node v14.17.0 or later, or have installed the
+  https://www.npmjs.com/package/diagnostics_channel['diagnostics_channel' polyfill].
+  ({issues}2383[#2383])
+
+- Added `exitSpanMinDuration` configuration field, allowing end users to
+  set a time threshold for dropping exit spans. ({pull}2843[#2843])
+
+[float]
+===== Bug fixes
+
+- Capturing an error would fail if the Error instance had an attribute that
+  was an invalid date. ({issues}2030[#2030])
+
+- Fix the span for an instrumented S3 ListBuckets API call to not be invalid
+  for APM server intake. ({pull}2866[#2866])
+
+- Fix an issue where the transaction `name` for a trace of a Lambda function
+  implementing a GraphQL server (e.g. via https://www.apollographql.com/docs/apollo-server/deployment/lambda/[apollo-server-lambda])
+  would not get the GraphQL-specific naming. ({issues}2832[#2832])
+
+
+[[release-notes-3.37.0]]
+==== 3.37.0 2022/07/18
+
+[float]
+===== Features
+
+- The agent will now use https://nodejs.org/api/async_context.html#class-asynclocalstorage[`AsyncLocalStorage`]
+  for run-context tracking in new enough versions of Node.js (versions >=14.5
+  and >=12.19). This can reduce overhead from using the APM agent, especially in
+  Promise-heavy applications. ({pull}2786[#2786])
++
+This also adds a new <<context-manager,`contextManager`>> configuration option
+to control which mechanism the agent uses for run-context tracking. It replaces
+the, now deprecated, <<async-hooks,`asyncHooks`>> configuration option. If
+you experience problems with the new AsyncLocalStorage-based tracking, you can
+restore the older behavior with `contextManager: "asynchooks"`.
+
+[float]
+===== Chores
+
+- The old "patch" mechanism that the APM agent uses for run-context tracking
+  (enabled via <<context-manager,`contextManager: "patch"`>>, or previously
+  enabled via `asyncHooks: false`) is now *deprecated*. It will be removed in a
+  future major version (after an 18 month deprecation period).
+
+
+[[release-notes-3.36.0]]
+==== 3.36.0 2022/06/15
+
+[float]
+===== Features
+
+- Adds https://github.com/elastic/apm/blob/main/specs/agents/handling-huge-traces/tracing-spans-dropped-stats.md[dropped span statistics]
+  to transaction payloads allowing APM Server to calculate more accurate
+  throughput metrics. ({issues}2302[#2302])
+
+- Improve the grouping of captured API errors from `@elastic/elasticsearch`
+  instrumentation. When an Elasticsearch client API error is captured, if
+  the response body includes a `error.type`, e.g. `illegal_argument_exception`,
+  the captured `error.exception.type` will be `ResponseError (illegal_argument_exception)`
+  rather than `ResponseError`. This means that API errors will be grouped
+  separately in the Kibana APM app based on their client API error type.
+  ({issues}2770[#2770])
+
+- Graphql v16 support ({issues}2508[#2508])
+
+
+[float]
+===== Bug fixes
+
+- Fix the automatic wrapping of Lambda handlers to support handler modules
+  created by `esbuild` bundling -- as is done in some Serverless Framework
+  functions that use TypeScript. ({issues}2753[#2753])
+
+- Fix Express route tracking (used for `transaction.name`) when an argument
+  is passed to the `next(arg)` callback of a request handler. Before this
+  change passing `next(<some object not an instance of Error>)` would be
+  considered an error by Express, but not by the APM agent's route
+  tracking. ({pull}2750[#2750])
+
+- Updated `sanitizeFieldNames` and `ignoreMessageQueues` environment variables
+  to use `ELASTIC_APM_` prefix. (previous variable names are still recgonized,
+  but not documented) ({issues}2636[#2636])
+
+
+[[release-notes-3.35.0]]
+==== 3.35.0 2022/06/01
+
+[float]
+===== Features
+
+- Add support for 'knex' version v0.21 to v1 ({issues}2699[#2699])
+
+- Change the instrumentation of SQS- and SNS-triggered AWS Lambda invocations:
+  The special-casing of triggers with a *single* message/record has been
+  removed.  That means that instead of a possible continued distributed trace
+  (if a single received message has a 'traceparent'), a *span link* will be
+  added to the APM transaction for each message with a 'traceparent'.
+  `transaction.context.message.` fields are no longer collected.
+  ({pull}2708[#2708])
+
+- Enable support for ioredis v5 ({pull}2714[#2714])
+
+- A Docker image with the APM agent will be published for each release to
+  `docker.elastic.co/observability/apm-agent-nodejs:VERSION`, for example:
+  `docker.elastic.co/observability/apm-agent-nodejs:3.35.0`. ({pull}2742[#2742])
+
+[float]
+===== Bug fixes
+
+- Fixes automatic Lambda handler wrapping to work with handlers that point to
+  subfolders (ex. `_HANDLER=path/to/folder.methodName`) ({issues}2709[#2709])
+
+
+[[release-notes-3.34.0]]
+==== 3.34.0 2022/05/26
+
+[float]
+===== Features
+
+- Add support for 'tedious' version v10 to v14 ({issues}2517[#2517])
+
+- When automatically determining <<service-name>> and <<service-version>> by
+  looking for a "package.json", the agent will now prefer to start looking
+  from the directory of the script being executed, rather than the current
+  working directory. ({issues}2420[#2420])
+
+- Add an experimental <<opentelemetry-bridge>>.  Briefly, the OpenTelemetry
+  Bridge allows one to use the vendor-neutral
+  https://opentelemetry.io/docs/instrumentation/js/api/[OpenTelemetry Tracing
+  API] (https://www.npmjs.com/package/@opentelemetry/api[`@opentelemetry/api`])
+  to manually instrument your code, and have the Elastic Node.js APM agent
+  handle those API calls. ({pull}2641[#2641])
+
+- Add https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/overview.md#links-between-spans)[Span Links] support. ({issues}2673[#2673])
++
+The <<transaction-start-span,`transaction.startSpan()`>> and
+<<apm-start-transaction,`apm.startTransaction()`>> public APIs now accept
+a `links` option for specify links. The OpenTelemetry Bridge also supports
+specifying links during span creation (with the limitation that span link
+*attributes* are not supported).
+
+- Add a <<trace-continuation-strategy>> configuration option to allow some
+  control over how the APM Agent uses incoming trace-context headers for context
+  propagation. ({issues}2592[#2592])
+
+- Add span links to AWS SQS messaging spans on 'ReceiveMessage', one for each
+  message (up to 1000) which has a 'traceparent' message attribute.
+  ({issues}2593[#2593])
+
+- Add "nodejs16.x" as one of the compatible runtimes for the Node.js APM agent
+  Lambda layers now that
+  https://aws.amazon.com/blogs/compute/node-js-16-x-runtime-now-available-in-aws-lambda/[this runtime is available on AWS].
+
+[float]
+===== Bug fixes
+
+- Fixes a bug where the the agent would not serialize the database context of
+  a span. ({issues}2715[#2715])
+
+- Fix a possible crash in span compression handling on a span that was manually
+  created without a parent span (e.g. if created with a custom `childOf`
+  option). ({pull}2701[#2701])
+
+[float]
+===== Chores
+
+- Add a package-lock.json file to ensure repeatable builds of the AWS Lambda
+  layer and to assist with security issue auditing. ({issues}2626[#2626])
+
+- Deprecate instrumentation for the legacy "hapi" package. While the APM agent
+  still supports it, that instrumentation is no longer tested and support
+  will be dropped in the next major version of the agent. Note that the
+  "@hapi/hapi" package is still fully supported. ({pull}2698[#2698])
+
+- Deprecate instrumentation for the obsolete "jade" package. "jade" was renamed
+  to "pug" in 2015.  While the APM agent still supports "jade", that
+  instrumentation is no longer tested. ({pull}2711[#2711])
+
 
 [[release-notes-3.33.0]]
 ==== 3.33.0 2022/05/05
 
 [float]
 ===== Features
-
-- Pulled the `traceparent` NPM module into a local module and replaced the
-  `random-poly-fill` module with the built in `require('crypto').randomFillSync`
-  function call ({pull}2669[#2669])
 
 - Add a `parent` option to `agent.captureError(err[, options][, cb])` to allow
   passing in a Transaction or Span to use as the parent for the error. Before

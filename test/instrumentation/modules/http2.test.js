@@ -1,3 +1,9 @@
+/*
+ * Copyright Elasticsearch B.V. and other contributors where applicable.
+ * Licensed under the BSD 2-Clause License; you may not use this file except in
+ * compliance with the BSD 2-Clause License.
+ */
+
 'use strict'
 
 var agent = require('../../..').start({
@@ -449,6 +455,7 @@ test('handling HTTP/1.1 request to http2.createSecureServer with allowHTTP1:true
 
     // Make an HTTP/1.1 request.
     var getOpts = {
+      agent: new https.Agent(),
       protocol: 'https:',
       host: 'localhost',
       port: port,

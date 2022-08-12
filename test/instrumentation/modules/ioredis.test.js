@@ -1,3 +1,9 @@
+/*
+ * Copyright Elasticsearch B.V. and other contributors where applicable.
+ * Licensed under the BSD 2-Clause License; you may not use this file except in
+ * compliance with the BSD 2-Clause License.
+ */
+
 'use strict'
 
 var agent = require('../../..').start({
@@ -7,6 +13,13 @@ var agent = require('../../..').start({
   centralConfig: false,
   spanCompressionEnabled: false
 })
+
+var ioredisVer = require('ioredis/package.json').version
+var semver = require('semver')
+if (semver.gte(ioredisVer, '5.0.0') && semver.lt(process.version, '12.22.0')) {
+  console.log(`# SKIP ioredis@${ioredisVer} does not support node ${process.version}`)
+  process.exit()
+}
 
 var Redis = require('ioredis')
 var test = require('tape')

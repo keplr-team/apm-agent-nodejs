@@ -10,14 +10,15 @@ pipeline {
     JOB_GCS_BUCKET = credentials('gcs-bucket')
     GITHUB_CHECK_ITS_NAME = 'Integration Tests'
     ITS_PIPELINE = 'apm-integration-tests-selector-mbp/main'
-    OPBEANS_REPO = 'opbeans-node'
     GITHUB_CHECK = 'true'
     RELEASE_URL_MESSAGE = "(<https://github.com/elastic/${env.REPO}/releases/tag/${env.TAG_NAME}|${env.TAG_NAME}>)"
     SLACK_CHANNEL = '#apm-agent-node'
     NOTIFY_TO = 'build-apm+apm-agent-nodejs@elastic.co'
     NPMRC_SECRET = 'secret/jenkins-ci/npmjs/elasticmachine'
     TOTP_SECRET = 'totp/code/npmjs-elasticmachine'
-    NODE_VERSION = 'v14.17.5'
+    BUILD_NODE_VERSION = 'v16.15.1'
+    DOCKER_REGISTRY = 'docker.elastic.co'
+    DOCKER_SECRET = 'secret/apm-team/ci/docker-registry/prod'
   }
   options {
     timeout(time: 3, unit: 'HOURS')
@@ -91,7 +92,7 @@ pipeline {
               def parallelTasks = [:]
               node['NODEJS_VERSION'].each{ version ->
                 parallelTasks["Node.js-${version}"] = generateStep(version: version)
-                parallelTasks["Node.js-${version}-async-hooks-false"] = generateStep(version: version, disableAsyncHooks: true)
+                parallelTasks["Node.js-${version}-noasynchooks"] = generateStep(version: version, disableAsyncHooks: true)
                 // TODO: to be enabled if required.
                 // parallelTasks["Windows-Node.js-${version}"] = generateStepForWindows(version: version)
               }
@@ -192,10 +193,10 @@ pipeline {
             }
           }
         }
-        stage('Nightly Test - No async hooks') {
+        stage('Nightly Test - noasynchooks') {
           agent { label 'linux && immutable' }
           steps {
-            withGithubNotify(context: 'Nightly No Async Hooks Test', tab: 'tests') {
+            withGithubNotify(context: 'Nightly noasynchooks Test', tab: 'tests') {
               deleteDir()
               unstash 'source'
               dir("${BASE_DIR}"){
@@ -203,7 +204,7 @@ pipeline {
                   def node = readYaml(file: '.ci/.jenkins_nightly_nodejs.yml')
                   def parallelTasks = [:]
                   node['NODEJS_VERSION'].each { version ->
-                    parallelTasks["Node.js-${version}-nightly-no-async-hooks"] = generateStep(version: version, buildType: 'nightly', disableAsyncHooks: true)
+                    parallelTasks["Node.js-${version}-nightly-noasynchooks"] = generateStep(version: version, buildType: 'nightly', disableAsyncHooks: true)
                   }
                   parallel(parallelTasks)
                 }
@@ -230,10 +231,10 @@ pipeline {
             }
           }
         }
-        stage('RC Test - No async hooks') {
+        stage('RC Test - noasynchooks') {
           agent { label 'linux && immutable' }
           steps {
-            withGithubNotify(context: 'RC No Async Hooks Test', tab: 'tests') {
+            withGithubNotify(context: 'RC noasynchooks Test', tab: 'tests') {
               deleteDir()
               unstash 'source'
               dir("${BASE_DIR}"){
@@ -241,7 +242,7 @@ pipeline {
                   def node = readYaml(file: '.ci/.jenkins_rc_nodejs.yml')
                   def parallelTasks = [:]
                   node['NODEJS_VERSION'].each { version ->
-                    parallelTasks["Node.js-${version}-rc-no-async-hooks"] = generateStep(version: version, buildType: 'rc', disableAsyncHooks: true)
+                    parallelTasks["Node.js-${version}-rc-noasynchooks"] = generateStep(version: version, buildType: 'rc', disableAsyncHooks: true)
                   }
                   parallel(parallelTasks)
                 }
@@ -281,6 +282,7 @@ pipeline {
         tag pattern: 'v\\d+\\.\\d+\\.\\d+', comparator: 'REGEXP'
       }
       environment {
+        HOME = "${env.WORKSPACE}" // required by "bash_standard_lib.sh" for "Push Docker Image" step
         SUFFIX_ARN_FILE = 'arn-file.md'
       }
       stages {
@@ -291,10 +293,20 @@ pipeline {
               setEnvVar('RELEASE_NOTES_URL', getReleaseNotesUrl())
               deleteDir()
               unstash 'source'
-              withNodeJSEnv(version: "${env.NODE_VERSION}"){
+              withNodeJSEnv(version: "${env.BUILD_NODE_VERSION}"){
                 dir("${BASE_DIR}"){
                   cmd(label: 'make dist', script: 'make -C .ci dist')
                 }
+              }
+            }
+          }
+        }
+        stage('Push Docker Image') {
+          steps {
+            withGithubNotify(context: "Push-Docker-Image") {
+              dir("${BASE_DIR}"){
+                dockerLogin(secret: "${env.DOCKER_SECRET}", registry: "${env.DOCKER_REGISTRY}")
+                cmd(label: 'make push-docker', script: 'make -C .ci push-docker')
               }
             }
           }
@@ -318,18 +330,18 @@ pipeline {
             }
           }
         }
-        stage('Release Notes') {
+        stage('GitHub Release') {
           steps {
             withGhEnv(forceInstallation: true, version: '2.4.0') {
               dir("${BASE_DIR}"){
-                cmd(label: 'make release-notes', script: 'make -C .ci release-notes')
+                cmd(label: 'make github-release', script: 'make -C .ci github-release')
               }
             }
           }
         }
         stage('Publish to npm') {
           steps {
-            withNodeJSEnv(version: "${env.NODE_VERSION}") {
+            withNodeJSEnv(version: "${env.BUILD_NODE_VERSION}") {
               withNpmrc(secret: "${env.NPMRC_SECRET}", path: "${env.WORKSPACE}/${env.BASE_DIR}") {
                 withTotpVault(secret: "${env.TOTP_SECRET}", code_var_name: 'TOTP_CODE') {
                   dir("${BASE_DIR}") {
@@ -337,25 +349,6 @@ pipeline {
                   }
                 }
               }
-            }
-          }
-        }
-        stage('Opbeans') {
-          environment {
-            REPO_NAME = "${OPBEANS_REPO}"
-          }
-          steps {
-            deleteDir()
-            dir("${OPBEANS_REPO}"){
-              git(credentialsId: 'f6c7695a-671e-4f4f-a331-acdce44ff9ba',
-                  url: "git@github.com:elastic/${OPBEANS_REPO}.git",
-                  branch: 'main')
-              // It's required to transform the tag value to the artifact version
-              sh script: ".ci/bump-version.sh ${env.BRANCH_NAME.replaceAll('^v', '')}", label: 'Bump version'
-              // The opbeans pipeline will trigger a release for the main branch
-              gitPush()
-              // The opbeans pipeline will trigger a release for the release tag
-              gitCreateTag(tag: "${env.BRANCH_NAME}")
             }
           }
         }
@@ -378,7 +371,7 @@ pipeline {
       The result JSON files are also archive into Jenkins.
     */
     stage('Benchmarks') {
-      agent { label 'metal' }
+      agent { label 'microbenchmarks-pool' }
       options { skipDefaultCheckout() }
       environment {
         HOME = "${env.WORKSPACE}"
@@ -431,10 +424,10 @@ def generateStep(Map params = [:]){
   def version = params?.version
   def tav = params.containsKey('tav') ? params.tav : ''
   def buildType = params.containsKey('buildType') ? params.buildType : 'release'
-  def ELASTIC_APM_ASYNC_HOOKS = String.valueOf(!params.get('disableAsyncHooks', false))
+  def contextManager = params.get('disableAsyncHooks', false) ? 'patch' : ''
   return {
     withNode(labels: 'linux && immutable', forceWorkspace: true, forceWorker: true) {
-      withEnv(["VERSION=${version}", "ELASTIC_APM_ASYNC_HOOKS=${ELASTIC_APM_ASYNC_HOOKS}"]) {
+      withEnv(["VERSION=${version}", "ELASTIC_APM_CONTEXT_MANAGER=${contextManager}"]) {
         deleteDir()
         unstash 'source'
         dir("${BASE_DIR}"){
@@ -509,7 +502,7 @@ def getSmartTAVContext() {
         withGithubNotify(context: 'Linting') {
           deleteDir()
           unstash 'source'
-          docker.image('node:12').inside("-v ${WORKSPACE}/${BASE_DIR}:/app -v /var/lib/jenkins/.git-references/:/var/lib/jenkins/.git-references"){
+          docker.image('node:16').inside("-v ${WORKSPACE}/${BASE_DIR}:/app -v /var/lib/jenkins/.git-references/:/var/lib/jenkins/.git-references"){
             withEnv(["HOME=/app"]) {
               sh(label: 'Basic tests I', script: 'cd /app && .ci/scripts/test_basic.sh')
               sh(label: 'Basic tests II', script: 'cd /app && .ci/scripts/test_types_babel_esm.sh')
@@ -523,7 +516,7 @@ def getSmartTAVContext() {
 
 def generateStepForWindows(Map params = [:]){
   def version = params?.version
-  def ELASTIC_APM_ASYNC_HOOKS = String.valueOf(!params.get('disableAsyncHooks', false))
+  def contextManager = params.get('disableAsyncHooks', false) ? 'patch' : ''
   return {
     sh label: 'Prepare services', script: ".ci/scripts/windows/prepare-test.sh ${version}"
     def linuxIp = grabWorkerIP()
@@ -531,7 +524,7 @@ def generateStepForWindows(Map params = [:]){
       // When installing with choco the PATH might not be updated within the already connected worker.
       withEnv(["PATH=${PATH};C:\\Program Files\\nodejs",
                "VERSION=${version}",
-               "ELASTIC_APM_ASYNC_HOOKS=${ELASTIC_APM_ASYNC_HOOKS}",
+               "ELASTIC_APM_CONTEXT_MANAGER=${contextManager}",
                "CASSANDRA_HOST=${linuxIp}",
                "ES_HOST=${linuxIp}",
                "LOCALSTACK_HOST=${linuxIp}",

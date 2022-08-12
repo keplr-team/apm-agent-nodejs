@@ -1,3 +1,9 @@
+/*
+ * Copyright Elasticsearch B.V. and other contributors where applicable.
+ * Licensed under the BSD 2-Clause License; you may not use this file except in
+ * compliance with the BSD 2-Clause License.
+ */
+
 'use strict'
 
 const existingValue = process.env.ELASTIC_APM_CENTRAL_CONFIG
@@ -64,7 +70,9 @@ test('remote config enabled', function (t) {
     capture_body: 'all',
     transaction_ignore_urls: ['foo'],
     log_level: 'warn',
-    span_stack_trace_min_duration: '50ms'
+    span_stack_trace_min_duration: '50ms',
+    trace_continuation_strategy: 'restart_external',
+    exit_span_min_duration: '25ms'
   }
   const expect = {
     transactionSampleRate: 0.42,
@@ -72,7 +80,9 @@ test('remote config enabled', function (t) {
     captureBody: 'all',
     transactionIgnoreUrls: ['foo'],
     logLevel: 'warn',
-    spanStackTraceMinDuration: 0.05
+    spanStackTraceMinDuration: 0.05,
+    traceContinuationStrategy: 'restart_external',
+    exitSpanMinDuration: 0.025
   }
 
   runTestsWithServer(t, updates, expect)

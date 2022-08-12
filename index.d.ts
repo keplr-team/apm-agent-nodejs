@@ -1,3 +1,9 @@
+/*
+ * Copyright Elasticsearch B.V. and other contributors where applicable.
+ * Licensed under the BSD 2-Clause License; you may not use this file except in
+ * compliance with the BSD 2-Clause License.
+ */
+
 /// <reference types="node" />
 
 // Note: We avoid import of any external `@types/...` to avoid TypeScript users
@@ -246,6 +252,7 @@ declare namespace apm {
     environment?: string;
     errorMessageMaxLength?: string; // DEPRECATED: use `longFieldMaxLength`.
     errorOnAbortedRequests?: boolean;
+    exitSpanMinDuration?: string;
     filterHttpHeaders?: boolean;
     frameworkName?: string;
     frameworkVersion?: string;
@@ -290,6 +297,7 @@ declare namespace apm {
     spanFramesMinDuration?: string;
     spanStackTraceMinDuration?: string;
     stackTraceLimit?: number;
+    traceContinuationStrategy?: TraceContinuationStrategy;
     transactionIgnoreUrls?: Array<string>;
     transactionMaxSpans?: number;
     transactionSampleRate?: number;
@@ -349,20 +357,31 @@ declare namespace apm {
     [propName: string]: any;
   }
 
+  // Link and `links` are intended to be compatible with OTel's
+  // equivalent APIs in "opentelemetry-js-api/src/trace/link.ts". Currently
+  // span link attributes are not supported.
+  export interface Link {
+    /** A W3C trace-context 'traceparent' string, Transaction, or Span. */
+    context: Transaction | Span | string; // This is a SpanContext in OTel.
+  }
+
   export interface TransactionOptions {
     startTime?: number;
     childOf?: Transaction | Span | string;
+    links?: Link[];
   }
 
   export interface SpanOptions {
     startTime?: number;
     childOf?: Transaction | Span | string;
     exitSpan?: boolean;
+    links?: Link[];
   }
 
   type CaptureBody = 'off' | 'errors' | 'transactions' | 'all';
   type CaptureErrorLogStackTraces = 'never' | 'messages' | 'always';
   type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'warning' | 'error' | 'fatal' | 'critical' | 'off';
+  type TraceContinuationStrategy = 'continue' | 'restart' | 'restart_external';
 
   type CaptureErrorCallback = (err: Error | null, id: string) => void;
   type FilterFn = (payload: Payload) => Payload | boolean | void;

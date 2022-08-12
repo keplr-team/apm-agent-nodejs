@@ -1,5 +1,11 @@
 #!/usr/bin/env node --unhandled-rejections=strict
 
+/*
+ * Copyright Elasticsearch B.V. and other contributors where applicable.
+ * Licensed under the BSD 2-Clause License; you may not use this file except in
+ * compliance with the BSD 2-Clause License.
+ */
+
 // A small example showing Elastic APM tracing @elastic/elasticsearch version 8.
 //
 // This assumes an Elasticsearch running on localhost. You can use:
@@ -12,15 +18,15 @@ const apm = require('../').start({ // elastic-apm-node
   logUncaughtExceptions: true
 })
 
-// Currently, pre-releases of v8 are published as the "...-canary" package name.
 // eslint-disable-next-line no-unused-vars
-const { Client, HttpConnection } = require('@elastic/elasticsearch-canary')
+const { Client, HttpConnection } = require('@elastic/elasticsearch')
 
 const client = new Client({
-  // With version 8 of the client, you can use `HttpConnection` to use the old
-  // HTTP client:
+  // By default version 8 uses the new undici HTTP client lib. You can specify
+  // `HttpConnection` to use the older HTTP client.
   // Connection: HttpConnection,
-  node: `http://${process.env.ES_HOST || 'localhost'}:9200`
+  node: `http://${process.env.ES_HOST || 'localhost'}:9200`,
+  maxRetries: 1
 })
 
 async function run () {

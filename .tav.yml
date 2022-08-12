@@ -1,3 +1,6 @@
+# This file is used by tool TAV - Test All Versions.
+# See: https://github.com/watson/test-all-versions
+
 generic-pool:
   versions: ^2.0.0 || ^3.1.0
   commands: node test/instrumentation/modules/generic-pool.test.js
@@ -7,24 +10,25 @@ mimic-response:
   commands:
     - node test/instrumentation/modules/mimic-response.test.js
     - node test/instrumentation/modules/http/github-179.test.js
-# Versions of `got` are only tested to check a bug in mimic-response@1.0.0
-# (fixed in mimic-response@1.0.1). Got@11 dropped usage of mimic-response,
-# so testing it no longer has a point. Got@12 is pure ESM, so cannot be tested
-# with the current test script.
-got-4:
+
+# Testing 'got' was initially added to test an issue in its usage of
+# mimic-response@1.0.0. However, this test case serves to sanity test 'got'
+# usage with the agent. Got@12 is pure ESM, so cannot currently be tested with
+# the current test script.
+got-v4-v9:
   name: got
   versions: '>=4.0.0 <9.0.0'
   node: '>=5'
   commands: node test/instrumentation/modules/http/github-423.test.js
-got-9:
+got-v9:
   name: got
   versions: ^9.0.0
   node: '>=8.3'
   commands: node test/instrumentation/modules/http/github-423.test.js
-got-10:
+got-v10-v12:
   name: got
-  versions: '>=10.0.0 <10.5.1 || >10.5.1 <11' # v10.5.1 is broken
-  node: '>=10'
+  versions: '>=10.0.0 <10.5.1 || >10.5.1 <12' # v10.5.1 is broken
+  node: '>=10.16.0'
   commands: node test/instrumentation/modules/http/github-423.test.js
 
 mysql:
@@ -32,6 +36,11 @@ mysql:
   commands:
     - node test/instrumentation/modules/mysql/mysql.test.js
     - node test/instrumentation/modules/mysql/pool-release-1.test.js
+
+# mysql2
+# - v1.6.2 is broken: https://github.com/sidorares/node-mysql2/issues/869
+# - v2.2.3 has a github dep ("@types/mysql": "types/mysql") that hits
+#   npm v6 install issue https://github.com/npm/cli/issues/4896
 mysql2-old:
   name: mysql2
   versions: '>=1.0.0 <1.6.0'
@@ -40,11 +49,12 @@ mysql2-old:
     - node test/instrumentation/modules/mysql2/pool-release-1.test.js
 mysql2-new:
   name: mysql2
-  versions: '1.6.0 || 1.6.1 || >=1.6.3 <3' # v1.6.2 is broken: https://github.com/sidorares/node-mysql2/issues/869
+  versions: '>=1.6.0 <1.6.2 || >=1.6.3 <2.2.3 || >=2.2.4 <3'
   node: '>=6.0.0'
   commands:
     - node test/instrumentation/modules/mysql2/mysql.test.js
     - node test/instrumentation/modules/mysql2/pool-release-1.test.js
+
 redis:
   versions: '>=2.0.0 <4.0.0'
   commands: node test/instrumentation/modules/redis.test.js
@@ -55,14 +65,19 @@ redis:
 #   versions: '^4.0.0'
 # However, there are a *lot* of ioredis releases, so we statically list a
 # subset (the first, plus then the latest in each major.minor).
-ioredis-old:
+ioredis-v2-v4:
   name: ioredis
   versions: '2.0.0 || 2.0.1 || 2.1.0 || 2.2.0 || 2.3.1 || 2.4.3 || 2.5.0 || 3.0.0 || 3.1.4 || 3.2.2 || >3.2.2 <4'
   commands: node test/instrumentation/modules/ioredis.test.js
-ioredis-new:
+ioredis-v4-v5:
   name: ioredis
   versions: '4.0.0 || 4.0.2 || 4.1.0 || 4.2.3 || 4.3.1 || 4.4.0 || 4.5.1 || 4.6.3 || 4.7.0 || 4.8.0 || 4.9.0 || 4.9.5 || 4.10.4 || 4.11.2 || 4.12.2 || 4.13.1 || 4.14.4 || 4.15.1 || 4.16.3 || 4.17.3 || 4.18.0 || 4.19.4 || 4.20.0 || 4.21.0 || 4.22.0 || 4.23.1 || 4.24.6 || 4.25.0 || 4.26.0 || 4.27.11 || ^4.28.0'
   node: '>=6'
+  commands: node test/instrumentation/modules/ioredis.test.js
+ioredis:
+  name: ioredis
+  versions: '^5.0.0'
+  node: '>=12.22.0'
   commands: node test/instrumentation/modules/ioredis.test.js
 
 pg-old-node:
@@ -114,20 +129,24 @@ bluebird:
   commands:
     - node test/instrumentation/modules/bluebird/bluebird.test.js
     - node test/instrumentation/modules/bluebird/cancel.test.js
-knex-old:
+# knex (https://github.com/knex/knex/blob/master/UPGRADING.md)
+# - knex 0.18.0 min supported node is v8
+# - knex 0.21.0 min supported node is v10
+# - knex 1.0.0 min supported node is v12
+knex-v0.9-v0.17:
   name: knex
   # v0.16.4 accidentally dropped support for Node.js 6
   versions: ^0.16.5 || <0.16.4 >=0.16.0 || ^0.15.0 || ^0.14.0 || ^0.13.0 || ^0.12.5 || <0.12.4 >0.11.6 || <0.11.6 >0.9.0
   commands: node test/instrumentation/modules/pg/knex.test.js
-knex-new:
+knex-v0.17-v0.21:
   name: knex
   node: '>=8.6.0'
   versions: '>=0.17 <0.21'
   commands: node test/instrumentation/modules/pg/knex.test.js
-knex-gt-nodev8:
+knex-v0.21-v1:
   name: knex
   node: '>=10.22.0'
-  versions: '>=0.21 <0.22'
+  versions: '>=0.21 <1' # Use '<1' to catch a 0.96.x release if there ever is one.
   commands: node test/instrumentation/modules/pg/knex.test.js
 ws-old:
   name: ws
@@ -138,10 +157,17 @@ ws-new:
   node: '>=8.6.0'
   versions: '>=7 <8'
   commands: node test/instrumentation/modules/ws.test.js
+
+graphql-v0.7-v16:
+  preinstall: npm uninstall express-graphql
+  versions: '>=0.7.0 <0.11.0 || >=0.11.1 <16'
+  commands: node test/instrumentation/modules/graphql.test.js
 graphql:
   preinstall: npm uninstall express-graphql
-  versions: '>=0.7.0 <0.11.0 || >=0.11.1 <16.0.0'
+  node: '>=12'
+  versions: '>=16.0.0 <17'
   commands: node test/instrumentation/modules/graphql.test.js
+
 express:
   versions: '>=4'
   commands:
@@ -354,33 +380,41 @@ elasticsearch:
 #   Fixed in 7.7.1: https://www.elastic.co/guide/en/elasticsearch/client/javascript-api/current/changelog-client.html#_7_7_1
 #   Note: When this repo drops Node.js v8 support, `versions` can be simplified.
 # - Version 7.12.0 dropped support for node v8.
-# - Version 8's min node is v12. We only support the latest canary release (at
-#   time of writing). The published '8.0.0-alpha.2' is *not* supported.
+# - Version 8.0.0 dropped node v10 support.
+# - Version 8.2.0 dropped node v12 support.
+#   - Skip "8.2.0" because https://github.com/elastic/elasticsearch-js/pull/1688
+#   - The ES client team uses "8.2.0-patch.N" for patch releases *after*
+#     "8.2.0" because they are stuck with stack version numbers. However,
+#     semver (and TAV) consider "-patch.N" to be a *prereleases*. This
+#     leads to some tortured "versions:" ranges below.
 '@elastic/elasticsearch-v7.0-v7.12':
   name: '@elastic/elasticsearch'
   versions: '>=7.0.0 <7.7.0 || >7.7.0 <7.12.0'
   commands: node test/instrumentation/modules/@elastic/elasticsearch.test.js
-'@elastic/elasticsearch-v7.12-v8':
+'@elastic/elasticsearch-v7.12-v8.2':
   name: '@elastic/elasticsearch'
-  versions: '>=7.12.0 <8.0.0'
-  node: '>=10.0.0'
+  versions: '>=7.12.0 <8.2'
+  node: '>=12.0.0'
   commands: node test/instrumentation/modules/@elastic/elasticsearch.test.js
+'@elastic/elasticsearch-v8.2-':
+  name: '@elastic/elasticsearch'
+  versions: '>=8.2.0-patch.1 <8.2.0 || >8.2.0'
+  node: '>=14.0.0'
+  commands: node test/instrumentation/modules/@elastic/elasticsearch.test.js
+
+# @elastic/elasticsearch-canary *sometimes* gets releases in advance of
+# '@elastic/elasticsearch'. It is only the latest such release that
+# might matter. The point in testing it is to try to make sure the agent is
+# updated for coming changes to the non-canary package.
 '@elastic/elasticsearch-canary':
   name: '@elastic/elasticsearch-canary'
-  versions: '>=8.0.0-canary.36 || >=8.1.0-canary.2'
-  node: '>=12'
+  versions: '>=8.2.0-canary.2'
+  node: '>=14'
   commands: node test/instrumentation/modules/@elastic/elasticsearch-canary.test.js
 
 handlebars:
   versions: '*'
   commands: node test/instrumentation/modules/handlebars.test.js
-# jade is a dead package. It was renamed to 'pug' in 2015 and hasn't had a
-# release since. Testing all 144 releases that match '>0.5.5' (the first
-# release APM supported) is a waste of time. Instead we will test the first
-# supported and the last released versions.
-jade:
-  versions: '0.5.6 || 1.11.0 || >1.11.0'
-  commands: node test/instrumentation/modules/jade.test.js
 # Pug v3 dropped node v8 support (https://github.com/pugjs/pug/releases/tag/pug%403.0.0).
 pug-v2:
   versions: '0.1.0 || >2.0.0 <3.0.0'
@@ -390,49 +424,13 @@ pug:
   node: '>8'
   commands: node test/instrumentation/modules/pug.test.js
 
-# hapi and @hapi/hapi
+# @hapi/hapi
 # - Package name: Starting with v17.9.0 and v18.2.0 the name changed from
-#   'hapi' to '@hapi/hapi'.
+#   'hapi' to '@hapi/hapi'. Instrumentation for the old 'hapi' is now deprecated
+#   and untested; it will be dropped in the next major version of the agent.
 # - Node version compat:
-#   - hapi@15: supports node >=v4; breaks on node v14 (usage of `os.tmpDir()`)
-#   - hapi@16: supports node >=v4
-#   - hapi@17, @hapi/hapi@17: supports node >=v8.12.0 (per its README);
-#     the instrumentation changed significantly for this version
-#   - hapi@18, @hapi/hapi@18: supports node >=v8.12.0 (per its README)
 #   - @hapi/hapi@19: supports node >=v12 (judging from commit 50d8d7d)
 #   - @hapi/hapi@20: appears (from travis template refs) to support node >=v12
-hapi-v9-v15:
-  name: hapi
-  versions: '>=9.0.1 <16.0.0'
-  node: '>=4 <14'
-  commands:
-    - node test/instrumentation/modules/hapi/basic-legacy-path.test.js
-    - node test/instrumentation/modules/hapi/set-framework-hapi.test.js
-hapi-v16:
-  name: hapi
-  versions: '>=16.0.0 <17.0.0'
-  node: '>=4'
-  commands:
-    - node test/instrumentation/modules/hapi/basic-legacy-path.test.js
-    - node test/instrumentation/modules/hapi/set-framework-hapi.test.js
-hapi-prenodev15:
-  name: hapi
-  versions: '>=17.0.0'
-  node: '>=8.12.0 <15.0.0'
-  commands:
-    - node test/instrumentation/modules/hapi/basic-legacy-path.test.js
-    - node test/instrumentation/modules/hapi/set-framework-hapi.test.js
-hapi:
-  name: hapi
-  # Work around https://github.com/npm/cli/issues/2267 in npm@7.
-  # Note: An alternative might be to just not test the "hapi" package with
-  # node >= 15, given that "hapi" was deprecated before node v16.
-  preinstall: rm -rf node_modules/hapi
-  node: '>=15.0.0'
-  versions: '>=17.0.0'
-  commands:
-    - node test/instrumentation/modules/hapi/basic-legacy-path.test.js
-    - node test/instrumentation/modules/hapi/set-framework-hapi.test.js
 '@hapi/hapi-v17-v18':
   name: '@hapi/hapi'
   versions: '>=17.0.0 <19.0.0'
@@ -448,11 +446,23 @@ hapi:
     - node test/instrumentation/modules/hapi/basic.test.js
     - node test/instrumentation/modules/hapi/set-framework-hapihapi.test.js
 
+tedious-v1-v11:
+  name: tedious
+  node: '>=6'
+  # - tedious@4.0.0 was broken, fixed in 4.0.1 by https://github.com/tediousjs/tedious/commit/4eceb48
+  versions: '^1.9.0 || 2.x || 3.x || ^4.0.1 || 5.x || 6.x || 7.x || 8.x || 9.x || 10.x'
+  commands: node test/instrumentation/modules/tedious.test.js
+
+tedious-v11-v12:
+  name: tedious
+  node: '>=10.17.0'
+  versions: '11.x'
+  commands: node test/instrumentation/modules/tedious.test.js
+
 tedious:
   name: tedious
-  # - tedious@4.0.0 was broken, fixed in 4.0.1 by
-  #   https://github.com/tediousjs/tedious/commit/4eceb48
-  versions: '^1.9.0 || 2.x || 3.x || ^4.0.1 || 5.x || 6.x || 7.x || 8.x || 9.x'
+  node: '>=12.3.0'
+  versions: '12.x || 13.x || 14.x'
   commands: node test/instrumentation/modules/tedious.test.js
 
 cassandra-driver:
@@ -476,6 +486,7 @@ restify-new:
 
 # https://www.fastify.io/docs/latest/LTS/
 # - #1086 suggests fastify@2.4.0 was a broken release, skip it.
+# - fastify@4.0.1 is broken: https://github.com/fastify/fastify/issues/3998#issuecomment-1153662513
 fastify-v1:
   name: fastify
   versions: '1.x'
@@ -492,10 +503,18 @@ fastify-v2:
     - node test/instrumentation/modules/fastify/fastify.test.js
     - node test/instrumentation/modules/fastify/async-await.test.js
     - node test/instrumentation/modules/fastify/set-framework.test.js
+fastify-v3:
+  name: fastify
+  versions: '>=3.0.0 <4'
+  node: '>=10'
+  commands:
+    - node test/instrumentation/modules/fastify/fastify.test.js
+    - node test/instrumentation/modules/fastify/async-await.test.js
+    - node test/instrumentation/modules/fastify/set-framework.test.js
 fastify:
   name: fastify
-  versions: '>=3.0.0'
-  node: '>=10'
+  versions: '>=4 <4.0.1 || >4.0.1'
+  node: '>=14.6.0'
   commands:
     - node test/instrumentation/modules/fastify/fastify.test.js
     - node test/instrumentation/modules/fastify/async-await.test.js
@@ -532,3 +551,11 @@ aws-sdk:
     - node test/instrumentation/modules/aws-sdk/sns.test.js
     - node test/instrumentation/modules/aws-sdk/sqs.test.js
     - node test/instrumentation/modules/aws-sdk/dynamodb.test.js
+
+# - undici@4.7.0 added its diagnostics_channel support.
+# - In undici@4.7.1 the `request.origin` property was added, which we need
+#   in the 'undici:request:create' diagnostic message.
+undici:
+  versions: '>=4.7.1 <6'
+  commands: node test/instrumentation/modules/undici/undici.test.js
+  node: '>=12.18'

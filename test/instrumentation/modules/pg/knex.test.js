@@ -1,3 +1,9 @@
+/*
+ * Copyright Elasticsearch B.V. and other contributors where applicable.
+ * Licensed under the BSD 2-Clause License; you may not use this file except in
+ * compliance with the BSD 2-Clause License.
+ */
+
 'use strict'
 
 process.env.ELASTIC_APM_TEST = true
@@ -15,9 +21,11 @@ var agent = require('../../../..').start({
 var knexVersion = require('knex/package').version
 var semver = require('semver')
 
-if (semver.gte(knexVersion, '0.21.0') && semver.lt(process.version, '10.0.0')) {
-  // Skip these tests: knex@0.21.x dropped support for node v8.
-  process.exit(0)
+// knex 0.18.0 min supported node is v8, knex 0.21.0 min supported node is v10
+if ((semver.gte(knexVersion, '0.18.0') && semver.lt(process.version, '8.6.0')) ||
+  (semver.gte(knexVersion, '0.21.0') && semver.lt(process.version, '10.22.0'))) {
+  console.log(`# SKIP knex@${knexVersion} does not support node ${process.version}`)
+  process.exit()
 }
 
 var Knex = require('knex')

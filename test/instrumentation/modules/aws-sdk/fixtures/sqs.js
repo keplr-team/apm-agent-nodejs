@@ -1,3 +1,9 @@
+/*
+ * Copyright Elasticsearch B.V. and other contributors where applicable.
+ * Licensed under the BSD 2-Clause License; you may not use this file except in
+ * compliance with the BSD 2-Clause License.
+ */
+
 'use strict'
 module.exports = {
   sendMessage: {
@@ -143,6 +149,13 @@ module.exports = {
               <Value>
                 <StringValue>6</StringValue>
                 <DataType>Number</DataType>
+              </Value>
+            </MessageAttribute>
+            <MessageAttribute>
+              <Name>TrAcEpArEnT</Name>
+              <Value>
+                <StringValue>00-460d51b6ed3ab96be45f2580b8016509-8ba4419207a1f2f8-01</StringValue>
+                <DataType>String</DataType>
               </Value>
             </MessageAttribute>
           </Message>

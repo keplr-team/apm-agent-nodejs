@@ -1,3 +1,9 @@
+/*
+ * Copyright Elasticsearch B.V. and other contributors where applicable.
+ * Licensed under the BSD 2-Clause License; you may not use this file except in
+ * compliance with the BSD 2-Clause License.
+ */
+
 'use strict'
 
 var cp = require('child_process')
@@ -22,6 +28,7 @@ var Instrumentation = require('../lib/instrumentation')
 var apmVersion = require('../package').version
 var apmName = require('../package').name
 var isHapiIncompat = require('./_is_hapi_incompat')
+const isFastifyIncompat = require('./_is_fastify_incompat')()
 
 // Options to pass to `agent.start()` to turn off some default agent behavior
 // that is unhelpful for these tests.
@@ -111,7 +118,6 @@ var optionFixtures = [
   ['apiKey', 'API_KEY'],
   ['apiRequestSize', 'API_REQUEST_SIZE', 768 * 1024],
   ['apiRequestTime', 'API_REQUEST_TIME', 10],
-  ['asyncHooks', 'ASYNC_HOOKS', true],
   ['captureBody', 'CAPTURE_BODY', 'off'],
   ['captureErrorLogStackTraces', 'CAPTURE_ERROR_LOG_STACK_TRACES', config.CAPTURE_ERROR_LOG_STACK_TRACES_MESSAGES],
   ['captureExceptions', 'CAPTURE_EXCEPTIONS', true],
@@ -151,6 +157,7 @@ var optionFixtures = [
   ['sourceLinesSpanAppFrames', 'SOURCE_LINES_SPAN_APP_FRAMES', 0],
   ['sourceLinesSpanLibraryFrames', 'SOURCE_LINES_SPAN_LIBRARY_FRAMES', 0],
   ['stackTraceLimit', 'STACK_TRACE_LIMIT', 50],
+  ['traceContinuationStrategy', 'TRACE_CONTINUATION_STRATEGY', 'continue'],
   ['transactionMaxSpans', 'TRANSACTION_MAX_SPANS', 500],
   ['transactionSampleRate', 'TRANSACTION_SAMPLE_RATE', 1.0],
   ['usePathAsTransactionName', 'USE_PATH_AS_TRANSACTION_NAME', false],
@@ -171,6 +178,8 @@ optionFixtures.forEach(function (fixture) {
     } else if (fixture[0] === 'serverCaCertFile') {
       // special case for files, so a temp file can be written
       type = 'file'
+    } else if (fixture[0] === 'traceContinuationStrategy') {
+      type = 'traceContinuationStrategy'
     } else if (typeof fixture[2] === 'number' || fixture[0] === 'errorMessageMaxLength') {
       type = 'number'
     } else if (Array.isArray(fixture[2])) {
@@ -203,6 +212,9 @@ optionFixtures.forEach(function (fixture) {
           mkdirp.sync(tmpdir)
           fs.writeFileSync(tmpfile, tmpfile)
           value = tmpfile
+          break
+        case 'traceContinuationStrategy':
+          value = 'restart' // a valid non-default value
           break
         case 'array':
           value = ['custom-value']
@@ -270,6 +282,10 @@ optionFixtures.forEach(function (fixture) {
         case 'array':
           value1 = ['overwriting-value']
           value2 = ['custom-value']
+          break
+        case 'traceContinuationStrategy':
+          value1 = 'restart'
+          value2 = 'continue'
           break
         case 'string':
           value1 = 'overwriting-value'
@@ -717,20 +733,20 @@ test('serviceName/serviceVersion zero-conf: valid', function (t) {
   })
 })
 
-test('serviceName/serviceVersion zero-conf: no package.json to find', function (t) {
+test('serviceName/serviceVersion zero-conf: cwd is outside package tree', function (t) {
   const indexJs = path.join(__dirname, 'fixtures', 'pkg-zero-conf-valid', 'index.js')
   cp.execFile(process.execPath, [indexJs], {
     timeout: 3000,
-    // Set CWD to top-level to ensure the agent cannot find a package.json file.
+    // Set CWD to outside of the package tree to test whether the agent
+    // package.json searching uses `require.main`.
     cwd: '/'
   }, function (err, stdout, stderr) {
     t.error(err, 'no error running index.js: ' + err)
     t.equal(stderr, '', 'no stderr')
     const lines = stdout.trim().split('\n')
     const conf = JSON.parse(lines[lines.length - 1])
-    t.equal(conf.serviceName, 'unknown-nodejs-service',
-      'serviceName is the `unknown-{service.agent.name}-service` zero-conf fallback')
-    t.equal(conf.serviceVersion, undefined, 'serviceVersion is undefined')
+    t.equal(conf.serviceName, 'validName', 'serviceName was inferred from package.json')
+    t.equal(conf.serviceVersion, '1.2.3', 'serviceVersion was inferred from package.json')
     t.end()
   })
 })
@@ -803,6 +819,47 @@ test('serviceName/serviceVersion zero-conf: weird "name" in package.json', funct
     t.equal(conf.serviceName, 'unknown-nodejs-service',
       'serviceName is the `unknown-{service.agent.name}-service` zero-conf fallback')
     t.equal(conf.serviceVersion, '1.2.3', 'serviceVersion was inferred from package.json')
+    t.end()
+  })
+})
+
+test('serviceName/serviceVersion zero-conf: no package.json to find', function (t) {
+  // To test the APM agent's fallback serviceName, we need to execute
+  // a script in a dir that has no package.json in its dir, or any dir up
+  // from it (we assume/hope that `os.tmpdir()` works for that).
+  const dir = os.tmpdir()
+  const script = path.resolve(dir, 'elastic-apm-node-zero-conf-test-script.js')
+  // Avoid Windows '\' path separators that are interpreted as escapes when
+  // interpolated into the script content below.
+  const agentDir = path.resolve(__dirname, '..')
+    .replace(new RegExp('\\' + path.win32.sep, 'g'), path.posix.sep)
+  function setupPkgEnv () {
+    fs.writeFileSync(script, `
+      const apm = require('${agentDir}').start({
+        disableSend: true
+      })
+      console.log(JSON.stringify(apm._conf))
+      `)
+    t.comment(`created ${script}`)
+  }
+  function teardownPkgEnv () {
+    fs.unlinkSync(script)
+    t.comment(`removed ${script}`)
+  }
+
+  setupPkgEnv()
+  cp.execFile(process.execPath, [script], {
+    timeout: 3000,
+    cwd: dir
+  }, function (err, stdout, stderr) {
+    t.error(err, 'no error running script: ' + err)
+    t.equal(stderr, '', 'no stderr')
+    const lines = stdout.trim().split('\n')
+    const conf = JSON.parse(lines[lines.length - 1])
+    t.equal(conf.serviceName, 'unknown-nodejs-service',
+      'serviceName is the `unknown-{service.agent.name}-service` zero-conf fallback')
+    t.equal(conf.serviceVersion, undefined, 'serviceVersion is undefined')
+    teardownPkgEnv()
     t.end()
   })
 })
@@ -915,16 +972,14 @@ usePathAsTransactionNameTests.forEach(function (usePathAsTransactionNameTest) {
 test('disableInstrumentations', function (t) {
   var expressGraphqlVersion = require('express-graphql/package.json').version
   var esVersion = safeGetPackageVersion('@elastic/elasticsearch')
-  const esCanaryVersion = safeGetPackageVersion('@elastic/elasticsearch-canary')
 
   // require('apollo-server-core') is a hard crash on nodes < 12.0.0
   const apolloServerCoreVersion = require('apollo-server-core/package.json').version
 
   var flattenedModules = Instrumentation.modules.reduce((acc, val) => acc.concat(val), [])
   var modules = new Set(flattenedModules)
-  if (isHapiIncompat('hapi')) {
-    modules.delete('hapi')
-  }
+  modules.delete('hapi') // Deprecated, we no longer test this instrumentation.
+  modules.delete('jade') // Deprecated, we no longer test this instrumentation.
   if (isHapiIncompat('@hapi/hapi')) {
     modules.delete('@hapi/hapi')
   }
@@ -932,10 +987,19 @@ test('disableInstrumentations', function (t) {
     modules.delete('express-graphql')
   }
   if (semver.lt(process.version, '10.0.0') && semver.gte(esVersion, '7.12.0')) {
-    modules.delete('@elastic/elasticsearch')
+    modules.delete('@elastic/elasticsearch') // - Version 7.12.0 dropped support for node v8.
   }
-  if (semver.lt(process.version, '10.0.0') && semver.gte(esCanaryVersion, '7.12.0')) {
+  if (semver.lt(process.version, '12.0.0') && semver.gte(esVersion, '8.0.0')) {
+    modules.delete('@elastic/elasticsearch') // - Version 8.0.0 dropped node v10 support.
+  }
+  if (semver.lt(process.version, '14.0.0') && semver.gte(esVersion, '8.2.0')) {
+    modules.delete('@elastic/elasticsearch') // - Version 8.2.0 dropped node v12 support.
+  }
+  if (semver.lt(process.version, '14.0.0')) {
     modules.delete('@elastic/elasticsearch-canary')
+  }
+  if (isFastifyIncompat) {
+    modules.delete('fastify')
   }
   // As of mongodb@4 only supports node >=v12.
   const mongodbVersion = require('../node_modules/mongodb/package.json').version
@@ -949,6 +1013,12 @@ test('disableInstrumentations', function (t) {
     // Restify (as of 8.6.0) is completely broken with latest node v18 nightly.
     // https://github.com/restify/node-restify/issues/1888
     modules.delete('restify')
+  }
+  if (semver.lt(process.version, '12.3.0')) {
+    modules.delete('tedious')
+  }
+  if (semver.lt(process.version, '12.18.0')) {
+    modules.delete('undici') // undici@5 supports node >=12.18
   }
 
   function testSlice (t, name, selector) {
@@ -1594,5 +1664,137 @@ test('spanStackTraceMinDuration', suite => {
     })
   })
 
+  suite.end()
+})
+
+// `contextManager` is synthesized from itself and `asyncHooks`.
+test('contextManager', suite => {
+  const contextManagerTestScenarios = [
+    {
+      name: 'contextManager defaults to empty',
+      startOpts: {},
+      env: {},
+      expectedVal: undefined
+    },
+    {
+      name: 'contextManager=patch is valid',
+      startOpts: {
+        contextManager: 'patch'
+      },
+      env: {},
+      expectedVal: 'patch'
+    },
+    {
+      name: 'contextManager=asynchooks is valid',
+      startOpts: {
+        contextManager: 'asynchooks'
+      },
+      env: {},
+      expectedVal: 'asynchooks'
+    },
+    {
+      name: 'contextManager=asynclocalstorage is valid',
+      startOpts: {
+        contextManager: 'asynclocalstorage'
+      },
+      env: {},
+      expectedVal: 'asynclocalstorage'
+    },
+    {
+      name: 'ELASTIC_APM_CONTEXT_MANAGER works',
+      startOpts: {},
+      env: {
+        ELASTIC_APM_CONTEXT_MANAGER: 'asynchooks'
+      },
+      expectedVal: 'asynchooks'
+    },
+    {
+      name: 'contextManager=bogus',
+      startOpts: {
+        contextManager: 'bogus'
+      },
+      env: {},
+      expectedVal: undefined
+    },
+    {
+      name: 'both asyncHooks and contextManager ignores the former',
+      startOpts: {
+        asyncHooks: false,
+        contextManager: 'asynchooks'
+      },
+      env: {},
+      expectedVal: 'asynchooks'
+    },
+    {
+      name: 'asyncHooks=false sets contextManager="patch"',
+      startOpts: {
+        asyncHooks: false
+      },
+      env: {},
+      expectedVal: 'patch'
+    },
+    {
+      name: 'asyncHooks=true sets contextManager=undefined',
+      startOpts: {
+        asyncHooks: true
+      },
+      env: {},
+      expectedVal: undefined
+    },
+    {
+      name: 'asyncHooks=bogus sets contextManager=undefined',
+      startOpts: {
+        asyncHooks: 'bogus'
+      },
+      env: {},
+      expectedVal: undefined
+    }
+  ]
+
+  contextManagerTestScenarios.forEach(scenario => {
+    suite.test(scenario.name, t => {
+      const preEnv = Object.assign({}, process.env)
+      // Tests run in Jenkins CI sets `ELASTIC_APM_CONTEXT_MANAGER`, which
+      // interferes with these tests.
+      delete process.env.ELASTIC_APM_CONTEXT_MANAGER
+      for (const [k, v] of Object.entries(scenario.env)) {
+        process.env[k] = v
+      }
+      const agent = new Agent()
+      agent.start(Object.assign({}, agentOptsNoopTransport, scenario.startOpts))
+
+      t.notOk('asyncHooks' in agent._conf, 'asyncHooks is not set on agent._conf')
+      t.strictEqual(agent._conf.contextManager, scenario.expectedVal, `contextManager=${scenario.expectedVal}`)
+
+      agent.destroy()
+      for (const k of Object.keys(process.env)) {
+        if (!(k in preEnv)) {
+          delete process.env[k]
+        } else if (process.env[k] !== preEnv[k]) {
+          process.env[k] = preEnv[k]
+        }
+      }
+      t.end()
+    })
+  })
+
+  suite.end()
+})
+
+test('env variable names', suite => {
+  // flatten
+  const names = [].concat(...Object.values(config.ENV_TABLE))
+
+  // list of names we keep around for backwards compatability
+  // but that don't conform to the ELASTIC_APM name
+  const legacy = ['ELASTIC_SANITIZE_FIELD_NAMES', 'KUBERNETES_POD_UID',
+    'KUBERNETES_POD_NAME', 'KUBERNETES_NODE_NAME', 'KUBERNETES_NAMESPACE',
+    'ELASTIC_IGNORE_MESSAGE_QUEUES']
+  for (const name of names) {
+    if (legacy.indexOf(name) !== -1) {
+      continue
+    }
+    suite.true(name.indexOf('ELASTIC_APM') === 0, `${name} starts with ELASTIC_APM`)
+  }
   suite.end()
 })

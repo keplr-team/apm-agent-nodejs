@@ -1,3 +1,9 @@
+/*
+ * Copyright Elasticsearch B.V. and other contributors where applicable.
+ * Licensed under the BSD 2-Clause License; you may not use this file except in
+ * compliance with the BSD 2-Clause License.
+ */
+
 'use strict'
 
 var agent = require('../../..').start({
@@ -46,7 +52,7 @@ test('instrument simple command', function (t) {
     // - mongodb-core@1.x always does a `admin.$cmd.ismaster` or
     //   `system.$cmd.ismaster` (the latter in for mongodb-core@<=1.2.22)
     //   command on initial connection. The APM agent captures this if
-    //   asyncHooks=true.
+    //   `contextManager != "patch"`.
     // - mongodb-core@1.x includes `elasticapm.$cmd.command` spans after the
     //   insert, update, and remove commands.
     for (var i = 0; i < data.spans.length; i++) {

@@ -1,3 +1,9 @@
+/*
+ * Copyright Elasticsearch B.V. and other contributors where applicable.
+ * Licensed under the BSD 2-Clause License; you may not use this file except in
+ * compliance with the BSD 2-Clause License.
+ */
+
 'use strict'
 
 const crypto = require('crypto')
@@ -173,6 +179,20 @@ test('ensureParentId', t => {
 
   const second = traceParent.ensureParentId()
   t.equal(first, second, 'future calls return the first parent id')
+
+  t.end()
+})
+
+test('setRecorded', t => {
+  const traceParent = TraceParent.fromString(header)
+
+  t.ok(traceParent.recorded)
+
+  traceParent.setRecorded(false)
+  t.ok(!traceParent.recorded)
+
+  traceParent.setRecorded(true)
+  t.ok(traceParent.recorded)
 
   t.end()
 })

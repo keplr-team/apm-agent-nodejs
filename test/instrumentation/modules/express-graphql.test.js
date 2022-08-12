@@ -1,3 +1,9 @@
+/*
+ * Copyright Elasticsearch B.V. and other contributors where applicable.
+ * Licensed under the BSD 2-Clause License; you may not use this file except in
+ * compliance with the BSD 2-Clause License.
+ */
+
 'use strict'
 
 var agent = require('../../..').start({
@@ -16,6 +22,13 @@ const expressGraphqlVersion = require('../../../node_modules/express-graphql/pac
 const semver = require('semver')
 if (semver.gte(expressGraphqlVersion, '0.10.0') && semver.lt(process.version, '10.4.0')) {
   console.log(`# SKIP express-graphql@${expressGraphqlVersion} testing with node <10.4 (${process.version}) because of a known issue`)
+  process.exit()
+}
+
+// graphql@16 crashes with node <12.
+const graphqlVer = require('graphql/package.json').version
+if (semver.satisfies(graphqlVer, '>=16') && !semver.satisfies(process.version, '>=12')) {
+  console.log(`# SKIP graphql@${graphqlVer} is incompatible with node ${process.version}`)
   process.exit()
 }
 

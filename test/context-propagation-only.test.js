@@ -1,3 +1,9 @@
+/*
+ * Copyright Elasticsearch B.V. and other contributors where applicable.
+ * Licensed under the BSD 2-Clause License; you may not use this file except in
+ * compliance with the BSD 2-Clause License.
+ */
+
 'use strict'
 
 // Test the behaviour of the agent configured with 'contextPropagationOnly=true'.
@@ -185,7 +191,7 @@ tape.test('contextPropagationOnly', function (suite) {
       // stacktrace collection when contextPropagationOnly=true. It isn't a
       // perfect way to test that.
       const durationMs = duration[0] / 1e3 + duration[1] / 1e6
-      const THRESHOLD_MS = 3 // Is this long enough for slow CI?
+      const THRESHOLD_MS = 5 // Is this long enough for slow CI?
       t.ok(durationMs < THRESHOLD_MS, `captureError is fast (<${THRESHOLD_MS}ms): ${durationMs}ms`)
 
       t.equal(server.events.length, 0, 'no events sent to APM server intake')

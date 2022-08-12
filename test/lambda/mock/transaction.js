@@ -1,3 +1,9 @@
+/*
+ * Copyright Elasticsearch B.V. and other contributors where applicable.
+ * Licensed under the BSD 2-Clause License; you may not use this file except in
+ * compliance with the BSD 2-Clause License.
+ */
+
 'use strict'
 
 const constants = require('../../../lib/constants')
@@ -14,7 +20,12 @@ module.exports = class TransactionMock {
     this._message = undefined
     this._service = undefined
     this.outcome = constants.OUTCOME_UNKNOWN
+    this._links = []
     this.opts = opts
+  }
+
+  setDefaultName (name) {
+    this.name = name
   }
 
   setCustomContext (custom) {
@@ -54,6 +65,10 @@ module.exports = class TransactionMock {
 
   setOutcome (outcome) {
     this.outcome = outcome
+  }
+
+  _addLinks (links) {
+    this._links = this._links.concat(links)
   }
 
   end () {

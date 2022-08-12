@@ -1,23 +1,34 @@
 SHELL = /bin/bash -eo pipefail
 
 AWS_FOLDER = ../build/aws
+DIST_DIR = /build/dist/nodejs
+LAMBDA_LAYER_ZIP_FILE = ../build/dist/elastic-apm-node-lambda-layer.zip
+DOCKER_IMAGE_NAME = observability/apm-agent-nodejs
+DOCKER_REGISTRY = docker.elastic.co
+AGENT_VERSION = $(shell echo $${BRANCH_NAME} | cut -f 2 -d 'v')
 
 export AWS_FOLDER
 
-build:
-	rm -rf $(AWS_FOLDER) || true
-	mkdir -p $(AWS_FOLDER)
-	cd $(AWS_FOLDER); \
-		npm init -y; \
-		npm install --global-style https://github.com/elastic/apm-agent-nodejs#$(BRANCH_NAME); \
-		mkdir nodejs; \
-		mv node_modules nodejs
+.PHONY: dist
+dist: validate-branch-name
+	../dev-utils/make-distribution.sh
+	@mkdir -p $(AWS_FOLDER)
+	cp $(LAMBDA_LAYER_ZIP_FILE) $(AWS_FOLDER)/elastic-apm-node-lambda-layer-$(BRANCH_NAME).zip
+
+.PHONY: clean
+clean:
+	rm -rf $(AWS_FOLDER)
+
 env:
 	env
-dist: validate-branch-name build
-	rm -f $(BRANCH_NAME).zip || true
-	cd $(AWS_FOLDER) ; \
-		zip -r $(BRANCH_NAME).zip nodejs
+
+# Create Docker image
+build-docker: validate-version
+	docker build -t $(DOCKER_REGISTRY)/$(DOCKER_IMAGE_NAME):$(AGENT_VERSION) \
+  --build-arg AGENT_DIR=$(DIST_DIR) ..
+
+push-docker: build-docker
+	../dev-utils/push-docker.sh $(DOCKER_REGISTRY) $(DOCKER_IMAGE_NAME) $(AGENT_VERSION)
 
 # List all the AWS regions
 get-all-aws-regions:
@@ -47,8 +58,8 @@ publish: validate-layer-name validate-aws-default-region
 		--layer-name "$(ELASTIC_LAYER_NAME)" \
 		--description "AWS Lambda Extension Layer for the Elastic APM Node.js Agent" \
 		--license "Apache-2.0" \
-		--compatible-runtimes nodejs14.x nodejs12.x nodejs10.x \
-		--zip-file "fileb://./$(AWS_FOLDER)/$(BRANCH_NAME).zip"
+		--compatible-runtimes nodejs16.x nodejs14.x nodejs12.x nodejs10.x \
+		--zip-file "fileb://./$(AWS_FOLDER)/elastic-apm-node-lambda-layer-$(BRANCH_NAME).zip"
 
 # Grant public access to the given LAYER in the given AWS region
 grant-public-layer-access: validate-layer-name validate-aws-default-region
@@ -72,14 +83,18 @@ get-version: validate-aws-default-region
 create-arn-file: validate-suffix-arn-file validate-release-notes-url
 	@./scripts/create-arn-table.sh
 
-release-notes: validate-branch-name validate-suffix-arn-file
+github-release: validate-branch-name validate-suffix-arn-file
 	@gh release list
 	@gh \
 		release \
 		create $(BRANCH_NAME) \
 		--title '$(BRANCH_NAME)' \
-		--notes-file $(AWS_FOLDER)/$(SUFFIX_ARN_FILE) \
-		$(AWS_FOLDER)/$(BRANCH_NAME).zip
+		--notes-file $(AWS_FOLDER)/$(SUFFIX_ARN_FILE)
+
+validate-version:
+ifndef AGENT_VERSION
+	$(error AGENT_VERSION is undefined)
+endif
 
 validate-branch-name:
 ifndef BRANCH_NAME

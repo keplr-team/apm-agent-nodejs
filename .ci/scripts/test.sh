@@ -226,11 +226,11 @@ else
   DOCKER_COMPOSE_FILE=docker-compose-all.yml
 fi
 
-ELASTIC_APM_ASYNC_HOOKS=${ELASTIC_APM_ASYNC_HOOKS:-true}
+ELASTIC_APM_CONTEXT_MANAGER=${ELASTIC_APM_CONTEXT_MANAGER:-true}
 
 set +e
 NVM_NODEJS_ORG_MIRROR=${NVM_NODEJS_ORG_MIRROR} \
-ELASTIC_APM_ASYNC_HOOKS=${ELASTIC_APM_ASYNC_HOOKS} \
+ELASTIC_APM_CONTEXT_MANAGER=${ELASTIC_APM_CONTEXT_MANAGER} \
 NODE_VERSION=${NODE_VERSION} \
 NODE_FULL_VERSION=${NODE_FULL_VERSION} \
 TAV_MODULE=${TAV_MODULE} \
@@ -248,9 +248,9 @@ if [ $? -gt 0 ] ; then
   exit 1
 fi
 
-set +e
+set -e
 NVM_NODEJS_ORG_MIRROR=${NVM_NODEJS_ORG_MIRROR} \
-ELASTIC_APM_ASYNC_HOOKS=${ELASTIC_APM_ASYNC_HOOKS} \
+ELASTIC_APM_CONTEXT_MANAGER=${ELASTIC_APM_CONTEXT_MANAGER} \
 NODE_VERSION=${NODE_VERSION} \
 NODE_FULL_VERSION=${NODE_FULL_VERSION} \
 TAV_MODULE=${TAV_MODULE} \
@@ -264,14 +264,6 @@ docker-compose \
   --remove-orphans \
   --abort-on-container-exit \
   node_tests
-
-if [ $? -gt 0 ] ; then
-  echo "error: 'docker-compose up ...' failed"
-  # Dump inspect details on all containers. The "State.Healthcheck" key may
-  # contain helpful info on unhealthy containers.
-  docker inspect $(docker ps -q)
-  exit 1
-fi
 
 if ! NODE_VERSION=${NODE_VERSION} docker-compose \
     --no-ansi \

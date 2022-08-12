@@ -1,3 +1,9 @@
+/*
+ * Copyright Elasticsearch B.V. and other contributors where applicable.
+ * Licensed under the BSD 2-Clause License; you may not use this file except in
+ * compliance with the BSD 2-Clause License.
+ */
+
 'use strict'
 
 const { appendFile, readFileSync } = require('fs')
@@ -60,7 +66,7 @@ function storeResult () {
     bench
   }
 
-  const data = `{"index":{"_index":"benchmark-nodejs","_type":"_doc"}}\n${JSON.stringify(result)}\n`
+  const data = `{"index":{"_index":"benchmark-nodejs"}}\n${JSON.stringify(result)}\n`
 
   appendFile(outputFile, data, function (err) {
     if (err) throw err

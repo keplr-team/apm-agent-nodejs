@@ -1,3 +1,9 @@
+/*
+ * Copyright Elasticsearch B.V. and other contributors where applicable.
+ * Licensed under the BSD 2-Clause License; you may not use this file except in
+ * compliance with the BSD 2-Clause License.
+ */
+
 'use strict'
 
 // Test the public Agent API.
@@ -440,6 +446,7 @@ test('#startSpan()', function (t) {
     t.notEqual(span._context.traceparent.id, '00f067aa0ba902b7')
     t.strictEqual(span._context.traceparent.parentId, '00f067aa0ba902b7')
     t.strictEqual(span._context.traceparent.flags, '01')
+    span.end()
     agent.destroy()
     t.end()
   })
