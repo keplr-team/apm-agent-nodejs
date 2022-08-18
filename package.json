@@ -1,6 +1,6 @@
 {
   "name": "@keplr/elastic-apm-node",
-  "version": "3.38.0",
+  "version": "3.38.1",
   "description": "The official Elastic APM agent for Node.js",
   "main": "index.js",
   "types": "index.d.ts",
