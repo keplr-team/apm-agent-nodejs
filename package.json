@@ -1,6 +1,6 @@
 {
   "name": "@keplr/elastic-apm-node",
-  "version": "3.38.0",
+  "version": "3.38.1",
   "description": "The official Elastic APM agent for Node.js",
   "main": "index.js",
   "types": "index.d.ts",
@@ -158,7 +158,7 @@
     "generic-pool": "^3.7.1",
     "get-port": "^5.1.1",
     "got": "^11.8.5",
-    "graphql": "^15.8.0",
+    "graphql": "^16.6.0",
     "handlebars": "^4.7.3",
     "https-pem": "^3.0.0",
     "ioredis": "^5.1.0",
