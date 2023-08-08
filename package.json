@@ -115,7 +115,7 @@
     "object-filter-sequence": "^1.0.0",
     "object-identity-map": "^1.0.2",
     "original-url": "^1.2.3",
-    "pino": "^6.11.2",
+    "pino": "^8.15.0",
     "readable-stream": "^3.4.0",
     "relative-microtime": "^2.0.0",
     "require-in-the-middle": "^7.1.1",
