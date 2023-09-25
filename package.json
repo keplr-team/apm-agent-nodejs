@@ -170,7 +170,7 @@
     "get-port": "^5.1.1",
     "glob": "^7.2.3",
     "got": "^11.8.5",
-    "graphql": "^16.6.0",
+    "graphql": "^16.8.1",
     "handlebars": "^4.7.3",
     "https-pem": "^3.0.0",
     "ioredis": "^5.1.0",
